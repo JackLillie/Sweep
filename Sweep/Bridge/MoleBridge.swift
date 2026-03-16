@@ -1,35 +1,53 @@
 import Foundation
 
+enum MoleBridgeError: LocalizedError {
+    case moleNotInstalled
+    case commandFailed(exitCode: Int32, stderr: String)
+    case parseError(String)
+    case timeout
+
+    var errorDescription: String? {
+        switch self {
+        case .moleNotInstalled:
+            "Mole binary not found"
+        case .commandFailed(let code, let stderr):
+            "Command failed (\(code)): \(stderr)"
+        case .parseError(let detail):
+            "Parse error: \(detail)"
+        case .timeout:
+            "Command timed out"
+        }
+    }
+}
+
 actor MoleBridge {
 
-    /// Path to the embedded or installed mole binary.
     private var molePath: String?
+    private let timeoutSeconds: TimeInterval
 
-    init() {
+    init(timeoutSeconds: TimeInterval = 30) {
+        self.timeoutSeconds = timeoutSeconds
+        self.molePath = nil
         self.molePath = findMoleBinary()
     }
 
     // MARK: - Binary Discovery
 
     private func findMoleBinary() -> String? {
-        // 1. Check embedded in app bundle
         if let bundled = Bundle.main.path(forResource: "mole", ofType: nil) {
             return bundled
         }
 
-        // 2. Check Homebrew (Apple Silicon)
         let brewPath = "/opt/homebrew/bin/mole"
         if FileManager.default.fileExists(atPath: brewPath) {
             return brewPath
         }
 
-        // 3. Check Homebrew (Intel)
         let intelBrewPath = "/usr/local/bin/mole"
         if FileManager.default.fileExists(atPath: intelBrewPath) {
             return intelBrewPath
         }
 
-        // 4. Try which
         if let path = runShell("/usr/bin/which", arguments: ["mole"]) {
             let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
@@ -44,32 +62,125 @@ actor MoleBridge {
         molePath != nil
     }
 
+    // MARK: - Core Runners
+
+    func runMoleJSON<T: Decodable>(_ command: String, arguments: [String] = []) async throws -> T {
+        let stdout = try await runMoleProcess(command, arguments: arguments)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        do {
+            return try decoder.decode(T.self, from: Data(stdout.utf8))
+        } catch {
+            throw MoleBridgeError.parseError(error.localizedDescription)
+        }
+    }
+
+    func runMoleText(_ command: String, arguments: [String] = []) async throws -> String {
+        let stdout = try await runMoleProcess(command, arguments: arguments)
+        return stripANSI(stdout)
+    }
+
+    private func runMoleProcess(_ command: String, arguments: [String]) async throws -> String {
+        guard let path = molePath else {
+            throw MoleBridgeError.moleNotInstalled
+        }
+
+        let process = Process()
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = [command] + arguments
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let resumed = NSLock()
+            var didResume = false
+
+            func resumeOnce(with result: Result<String, Error>) {
+                resumed.lock()
+                defer { resumed.unlock() }
+                guard !didResume else { return }
+                didResume = true
+                continuation.resume(with: result)
+            }
+
+            let timeoutItem = DispatchWorkItem {
+                process.terminate()
+                resumeOnce(with: .failure(MoleBridgeError.timeout))
+            }
+            DispatchQueue.global().asyncAfter(
+                deadline: .now() + timeoutSeconds,
+                execute: timeoutItem
+            )
+
+            process.terminationHandler = { _ in
+                timeoutItem.cancel()
+
+                let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+
+                if process.terminationStatus != 0 {
+                    let stderr = String(data: stderrData, encoding: .utf8) ?? ""
+                    resumeOnce(with: .failure(
+                        MoleBridgeError.commandFailed(exitCode: process.terminationStatus, stderr: stderr)
+                    ))
+                    return
+                }
+
+                let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
+                resumeOnce(with: .success(stdout))
+            }
+
+            do {
+                try process.run()
+            } catch {
+                timeoutItem.cancel()
+                resumeOnce(with: .failure(MoleBridgeError.moleNotInstalled))
+            }
+        }
+    }
+
+    // MARK: - Convenience Commands
+
+    func fetchStatus() async throws -> MoleStatus {
+        try await runMoleJSON("status")
+    }
+
+    func analyze(path: String) async throws -> MoleAnalysis {
+        try await runMoleJSON("analyze", arguments: ["--json", path])
+    }
+
+    func cleanDryRun() async throws -> String {
+        try await runMoleText("clean", arguments: ["--dry-run"])
+    }
+
+    func clean() async throws -> String {
+        try await runMoleText("clean")
+    }
+
     // MARK: - System Info
 
     func fetchSystemInfo() -> SystemInfo {
         var info = SystemInfo()
 
-        // Hostname
         info.hostname = Host.current().localizedName ?? "Mac"
 
-        // macOS version
         let version = ProcessInfo.processInfo.operatingSystemVersion
         info.osVersion = "macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
 
-        // Mac model
         if let model = runShell("/usr/sbin/sysctl", arguments: ["-n", "hw.model"]) {
             info.macModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
-        // Memory
         let physMem = ProcessInfo.processInfo.physicalMemory
-        info.memoryTotal = Double(physMem) / 1_073_741_824 // GB
+        info.memoryTotal = Double(physMem) / 1_073_741_824
 
         if let vmStat = runShell("/usr/bin/vm_stat", arguments: []) {
             info.memoryUsed = parseMemoryUsage(vmStat, totalGB: info.memoryTotal)
         }
 
-        // Disk
         if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: "/") {
             if let totalSize = attrs[.systemSize] as? Int64 {
                 info.diskTotal = Double(totalSize) / 1_000_000_000
@@ -80,12 +191,10 @@ actor MoleBridge {
             }
         }
 
-        // CPU usage (snapshot)
         if let topOutput = runShell("/usr/bin/top", arguments: ["-l", "1", "-n", "0", "-stats", "cpu"]) {
             info.cpuUsage = parseCPUUsage(topOutput)
         }
 
-        // Uptime
         let uptime = ProcessInfo.processInfo.systemUptime
         info.uptimeDays = Int(uptime) / 86400
         info.uptimeHours = (Int(uptime) % 86400) / 3600
@@ -151,7 +260,7 @@ actor MoleBridge {
         return items.sorted { $0.size > $1.size }
     }
 
-    // MARK: - Mole Commands
+    // MARK: - Legacy Command Runner
 
     func runMoleCommand(_ command: String, arguments: [String] = []) -> String? {
         guard let path = molePath else { return nil }
@@ -159,6 +268,13 @@ actor MoleBridge {
     }
 
     // MARK: - Helpers
+
+    private static let ansiPattern = try! NSRegularExpression(pattern: "\u{1B}\\[[0-9;]*[a-zA-Z]")
+
+    private func stripANSI(_ string: String) -> String {
+        let range = NSRange(string.startIndex..., in: string)
+        return Self.ansiPattern.stringByReplacingMatches(in: string, range: range, withTemplate: "")
+    }
 
     private func runShell(_ command: String, arguments: [String]) -> String? {
         let process = Process()
@@ -218,7 +334,7 @@ actor MoleBridge {
             }
         }
 
-        let pageSize: Double = 16384 // Apple Silicon default
+        let pageSize: Double = 16384
         let usedBytes = (pagesActive + pagesWired + pagesCompressed) * pageSize
         return usedBytes / 1_073_741_824
     }

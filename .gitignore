@@ -23,3 +23,7 @@ Package.resolved
 
 # Local
 TODO.md
+.claude/
+.agents/
+skills/
+skills-lock.json
