@@ -153,4 +153,9 @@ final class AppViewModel: ObservableObject {
     var hasCleanableItems: Bool {
         !cleanSections.isEmpty
     }
+
+    // MARK: - Applications
+    @Published var apps: [AppInfo] = []
+    @Published var isLoadingApps = false
+    @Published var appsScanned = false
 }

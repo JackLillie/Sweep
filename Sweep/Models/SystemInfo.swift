@@ -150,6 +150,7 @@ struct AppInfo: Identifiable {
     let size: Int64
     let path: String
     let lastOpened: Date?
+    let icon: NSImage?
 
     var formattedSize: String {
         ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
