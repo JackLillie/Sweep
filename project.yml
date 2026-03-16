@@ -1,6 +1,6 @@
 name: Sweep
 options:
-  bundleIdPrefix: com.sweep
+  bundleIdPrefix: dev.jacklillie
   deploymentTarget:
     macOS: "14.0"
   xcodeVersion: "16.0"
@@ -23,7 +23,7 @@ targets:
       base:
         INFOPLIST_FILE: Sweep/Info.plist
         CODE_SIGN_ENTITLEMENTS: Sweep/Sweep.entitlements
-        PRODUCT_BUNDLE_IDENTIFIER: com.sweep.app
+        PRODUCT_BUNDLE_IDENTIFIER: dev.jacklillie.Sweep
         PRODUCT_NAME: Sweep
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: YES

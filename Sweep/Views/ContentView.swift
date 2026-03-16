@@ -29,7 +29,6 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .contentMargins(.top, 0, for: .scrollContent)
                 }
-                .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 240)
             } else {
                 MoleNotFoundView {
                     Task { await viewModel.recheckMole() }
