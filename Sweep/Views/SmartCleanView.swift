@@ -130,7 +130,7 @@ struct SmartCleanView: View {
                 .controlSize(.large)
                 .buttonStyle(.borderedProminent)
             } else {
-                Text("Grant Full Disk Access in System Settings, then come back here.")
+                Text("Grant the permissions above in System Settings, then come back here.")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)

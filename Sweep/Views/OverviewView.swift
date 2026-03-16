@@ -18,6 +18,7 @@ struct OverviewView: View {
             } else {
                 ScrollView {
                     VStack(spacing: 16) {
+                        header
                         healthBadge
                         gaugesRow
                         infoRows
@@ -30,16 +31,7 @@ struct OverviewView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .scrollContentBackground(.hidden)
         .toolbarBackground(.hidden, for: .windowToolbar)
-        .navigationTitle(viewModel.systemInfo.hostname.isEmpty ? "Overview" : viewModel.systemInfo.hostname)
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                if !viewModel.isLoading, !viewModel.systemInfo.macModel.isEmpty {
-                    Text("\(viewModel.systemInfo.macModel) · \(viewModel.systemInfo.osVersion)")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
+        .navigationTitle("")
         .onAppear { startRefresh() }
         .onDisappear { stopRefresh() }
         .alert("Action Failed", isPresented: showingError, presenting: viewModel.actionError) { _ in
