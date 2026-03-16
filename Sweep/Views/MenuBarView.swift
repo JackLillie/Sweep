@@ -83,27 +83,26 @@ struct MenuBarView: View {
                     Task { await viewModel.flushDNS() }
                 }
             }
-            .padding(.horizontal, 6)
+            .padding(.horizontal, 4)
             .padding(.vertical, 6)
 
             Divider()
 
-            MenuBarActionButton(icon: "macwindow", label: "Show Main Window", color: .primary) {
-                dismiss()
-                NSApp.setActivationPolicy(.regular)
-                NSApp.activate(ignoringOtherApps: true)
-                openWindow(id: "main")
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
+            VStack(spacing: 2) {
+                MenuBarActionButton(icon: "macwindow", label: "Show Main Window", color: .primary) {
+                    dismiss()
+                    NSApp.setActivationPolicy(.regular)
+                    NSApp.activate(ignoringOtherApps: true)
+                    openWindow(id: "main")
+                }
 
-            Divider()
-
-            MenuBarActionButton(icon: "power", label: "Quit Sweep", color: .primary) {
-                NSApp.terminate(nil)
+                MenuBarActionButton(icon: "power", label: "Quit Sweep", color: .primary) {
+                    NSApp.terminate(nil)
+                }
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
+            .padding(.horizontal, 4)
+            .padding(.top, 4)
+            .padding(.bottom, 6)
         }
         .frame(width: 280)
     }
@@ -159,10 +158,10 @@ struct MenuBarActionButton: View {
 
                 Spacer()
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: 10)
                     .fill(isHovering ? Color.primary.opacity(0.08) : .clear)
             )
         }
