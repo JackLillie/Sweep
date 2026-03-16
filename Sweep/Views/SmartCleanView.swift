@@ -5,83 +5,113 @@ struct SmartCleanView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            VStack(spacing: 8) {
-                if viewModel.isScanning {
+            if viewModel.isScanning {
+                VStack(spacing: 12) {
                     ProgressView()
                         .scaleEffect(0.8)
-                        .padding(.bottom, 4)
                     Text("Scanning your Mac...")
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.system(size: 13))
                         .foregroundStyle(.secondary)
-                } else if viewModel.cleanableItems.isEmpty {
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if viewModel.cleanableItems.isEmpty {
+                VStack(spacing: 12) {
                     Image(systemName: "sparkles")
-                        .font(.system(size: 32))
+                        .font(.system(size: 36))
                         .foregroundStyle(.purple)
-                        .padding(.bottom, 4)
                     Text("Ready to scan")
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.system(size: 18, weight: .semibold))
                     Text("Find junk files, caches, and logs to clean up.")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
-                } else {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 32))
-                        .foregroundStyle(.green)
-                        .padding(.bottom, 4)
-                    Text("\(viewModel.formattedCleanableSize) can be cleaned")
-                        .font(.system(size: 20, weight: .semibold))
-                    Text("\(viewModel.cleanableItems.count) categories found")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 28)
-            .background(Color(nsColor: .windowBackgroundColor))
-
-            Divider()
-
-            // Items list
-            if !viewModel.cleanableItems.isEmpty {
-                List {
-                    ForEach(viewModel.cleanableItems.indices, id: \.self) { index in
-                        CleanableItemRow(item: $viewModel.cleanableItems[index])
+                    Button {
+                        Task { await viewModel.scanForCleanables() }
+                    } label: {
+                        Text("Scan")
+                            .frame(minWidth: 80)
                     }
+                    .controlSize(.large)
+                    .buttonStyle(.borderedProminent)
+                    .padding(.top, 4)
                 }
-                .listStyle(.inset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                Spacer()
-            }
+                ScrollView {
+                    VStack(spacing: 16) {
+                        // Summary
+                        GroupBox {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.green.opacity(0.15))
+                                        .frame(width: 44, height: 44)
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 18, weight: .bold))
+                                        .foregroundStyle(.green)
+                                }
 
-            Divider()
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\(viewModel.formattedCleanableSize) can be cleaned")
+                                        .font(.system(size: 14, weight: .semibold))
+                                    Text("\(viewModel.cleanableItems.count) categories found")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .padding(.vertical, 2)
+                            .padding(.horizontal, 4)
+                        }
 
-            // Bottom bar
-            HStack {
-                if !viewModel.cleanableItems.isEmpty {
+                        // Items
+                        GroupBox {
+                            VStack(spacing: 0) {
+                                ForEach(viewModel.cleanableItems.indices, id: \.self) { index in
+                                    CleanableItemRow(item: $viewModel.cleanableItems[index])
+                                    if index < viewModel.cleanableItems.count - 1 {
+                                        Divider().padding(.leading, 44)
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 4)
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
+                }
+
+                Divider()
+
+                // Bottom bar
+                HStack {
                     Text("Selected: \(viewModel.formattedCleanableSize)")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button {
-                    if viewModel.cleanableItems.isEmpty {
+                    Spacer()
+                    Button {
                         Task { await viewModel.scanForCleanables() }
-                    } else {
-                        // TODO: Wire clean action to bridge
+                    } label: {
+                        Text("Scan Again")
                     }
-                } label: {
-                    Text(viewModel.cleanableItems.isEmpty ? "Scan" : "Clean")
-                        .frame(minWidth: 80)
+                    .controlSize(.regular)
+
+                    Button {
+                        // TODO: Wire clean action
+                    } label: {
+                        Text("Clean")
+                            .frame(minWidth: 60)
+                    }
+                    .controlSize(.large)
+                    .buttonStyle(.borderedProminent)
                 }
-                .controlSize(.large)
-                .buttonStyle(.borderedProminent)
-                .disabled(viewModel.isScanning)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
             }
-            .padding(16)
-            .background(.bar)
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(Color(nsColor: .windowBackgroundColor))
+        .toolbarBackground(.hidden, for: .windowToolbar)
+        .navigationTitle("")
     }
 }
 
@@ -91,10 +121,10 @@ struct CleanableItemRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: item.category.icon)
-                .font(.system(size: 16))
+                .font(.system(size: 14))
                 .foregroundStyle(color(for: item.category))
-                .frame(width: 28, height: 28)
-                .background(color(for: item.category).opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                .frame(width: 32, height: 32)
+                .background(color(for: item.category).opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name)
@@ -116,7 +146,7 @@ struct CleanableItemRow: View {
                 .toggleStyle(.checkbox)
                 .labelsHidden()
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 6)
     }
 
     private func color(for category: CleanableCategory) -> Color {

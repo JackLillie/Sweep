@@ -5,7 +5,7 @@ struct StorageView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: 16) {
                 // Disk usage bar
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
@@ -25,7 +25,6 @@ struct StorageView: View {
                                 .foregroundStyle(.secondary)
                         }
 
-                        // Storage bar
                         GeometryReader { geo in
                             let used = viewModel.systemInfo.diskPercentage
                             ZStack(alignment: .leading) {
@@ -56,7 +55,8 @@ struct StorageView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    .padding(4)
+                    .padding(.vertical, 2)
+                    .padding(.horizontal, 4)
                 }
 
                 // Categories
@@ -66,6 +66,7 @@ struct StorageView: View {
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(.secondary)
                             .padding(.bottom, 8)
+                            .padding(.leading, 4)
 
                         ForEach(storageCategories) { category in
                             HStack(spacing: 12) {
@@ -84,13 +85,15 @@ struct StorageView: View {
                                     .foregroundStyle(.secondary)
                             }
                             .padding(.vertical, 6)
+                            .padding(.horizontal, 4)
 
                             if category.id != storageCategories.last?.id {
                                 Divider()
                             }
                         }
                     }
-                    .padding(4)
+                    .padding(.vertical, 2)
+                    .padding(.horizontal, 4)
                 }
 
                 // Tip
@@ -107,12 +110,16 @@ struct StorageView: View {
                         }
                         Spacer()
                     }
-                    .padding(4)
+                    .padding(.vertical, 2)
+                    .padding(.horizontal, 4)
                 }
             }
-            .padding(24)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .toolbarBackground(.hidden, for: .windowToolbar)
+        .navigationTitle("")
     }
 
     private var storageGradient: LinearGradient {

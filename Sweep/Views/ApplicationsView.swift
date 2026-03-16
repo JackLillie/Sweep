@@ -14,41 +14,22 @@ struct ApplicationsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Toolbar
-            HStack {
-                Text("\(filteredApps.count) applications")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Picker("Sort by", selection: $sortOrder) {
-                    ForEach(SortOrder.allCases, id: \.self) { order in
-                        Text(order.rawValue).tag(order)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 240)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(.bar)
-
-            Divider()
-
+        Group {
             if isLoading {
-                Spacer()
-                ProgressView("Scanning applications...")
-                    .font(.system(size: 13))
-                Spacer()
-            } else if apps.isEmpty {
-                Spacer()
-                VStack(spacing: 8) {
-                    Image(systemName: "square.grid.2x2")
-                        .font(.system(size: 32))
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Scanning applications...")
+                        .font(.system(size: 13))
                         .foregroundStyle(.secondary)
-                    Text("Click Scan to find installed applications")
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if apps.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "square.grid.2x2")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.secondary)
+                    Text("Scan to find installed applications")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                     Button("Scan Applications") {
@@ -58,45 +39,71 @@ struct ApplicationsView: View {
                     .buttonStyle(.borderedProminent)
                     .padding(.top, 4)
                 }
-                Spacer()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(filteredApps) { app in
-                    HStack(spacing: 12) {
-                        Image(systemName: "app.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(.blue)
-                            .frame(width: 32, height: 32)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(app.name)
-                                .font(.system(size: 13, weight: .medium))
-                            Text(app.path)
-                                .font(.system(size: 11))
-                                .foregroundStyle(.tertiary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
+                VStack(spacing: 0) {
+                    // Toolbar
+                    HStack {
+                        Text("\(filteredApps.count) applications")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
 
                         Spacer()
 
-                        if let days = app.daysSinceLastOpened {
-                            Text(days > 0 ? "\(days)d ago" : "Today")
-                                .font(.system(size: 11))
-                                .foregroundStyle(days > 90 ? .orange : .secondary)
+                        Picker("Sort by", selection: $sortOrder) {
+                            ForEach(SortOrder.allCases, id: \.self) { order in
+                                Text(order.rawValue).tag(order)
+                            }
                         }
-
-                        Text(app.formattedSize)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 80, alignment: .trailing)
+                        .pickerStyle(.segmented)
+                        .frame(width: 240)
                     }
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+
+                    Divider()
+
+                    List(filteredApps) { app in
+                        HStack(spacing: 12) {
+                            Image(systemName: "app.fill")
+                                .font(.system(size: 18))
+                                .foregroundStyle(.blue)
+                                .frame(width: 32, height: 32)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(app.name)
+                                    .font(.system(size: 13, weight: .medium))
+                                Text(app.path)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+
+                            Spacer()
+
+                            if let days = app.daysSinceLastOpened {
+                                Text(days > 0 ? "\(days)d ago" : "Today")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(days > 90 ? .orange : .secondary)
+                            }
+
+                            Text(app.formattedSize)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 80, alignment: .trailing)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    .listStyle(.inset)
+                    .scrollContentBackground(.hidden)
                 }
-                .listStyle(.inset)
             }
         }
+        .background(Color(nsColor: .windowBackgroundColor))
+        .toolbarBackground(.hidden, for: .windowToolbar)
+        .navigationTitle("")
         .searchable(text: $searchText, placement: .toolbar, prompt: "Filter applications")
-        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     private var filteredApps: [AppInfo] {
@@ -130,7 +137,6 @@ struct ApplicationsView: View {
             let fullPath = "\(applicationsPath)/\(item)"
             let name = item.replacingOccurrences(of: ".app", with: "")
 
-            // Get size
             var size: Int64 = 0
             if let enumerator = fm.enumerator(
                 at: URL(fileURLWithPath: fullPath),
@@ -145,10 +151,7 @@ struct ApplicationsView: View {
                 }
             }
 
-            // Get bundle identifier
             let bundleID = Bundle(path: fullPath)?.bundleIdentifier ?? ""
-
-            // Get last opened date
             let attrs = try? fm.attributesOfItem(atPath: fullPath)
             let lastOpened = attrs?[.modificationDate] as? Date
 
