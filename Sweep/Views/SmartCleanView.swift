@@ -2,14 +2,12 @@ import SwiftUI
 
 struct SmartCleanView: View {
     @ObservedObject var viewModel: AppViewModel
-    @State private var hasScanned = false
     @State private var showCleanConfirm = false
     @State private var hasFullDiskAccess = false
-    @State private var checkedPermissions = false
 
     var body: some View {
         Group {
-            if !checkedPermissions {
+            if !viewModel.cleanPermissionsChecked {
                 permissionsSetupView
             } else if viewModel.isScanning {
                 scanningView
@@ -24,9 +22,9 @@ struct SmartCleanView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if viewModel.cleanResult != nil {
                 cleanCompleteView
-            } else if !viewModel.hasCleanableItems && !hasScanned {
+            } else if !viewModel.hasCleanableItems && !viewModel.hasScanned {
                 emptyStateView
-            } else if !viewModel.hasCleanableItems && hasScanned {
+            } else if !viewModel.hasCleanableItems && viewModel.hasScanned {
                 nothingFoundView
             } else {
                 resultsView
@@ -35,11 +33,6 @@ struct SmartCleanView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .toolbarBackground(.hidden, for: .windowToolbar)
         .navigationTitle("")
-        .onDisappear {
-            if viewModel.isScanning {
-                viewModel.cancelScan()
-            }
-        }
         .alert("Clean Selected Items?", isPresented: $showCleanConfirm) {
             Button("Cancel", role: .cancel) {}
             Button("Clean", role: .destructive) {
@@ -60,6 +53,7 @@ struct SmartCleanView: View {
                 }
             }
             .padding(.horizontal, 24)
+            .padding(.top, 8)
             .padding(.bottom, 24)
         }
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -120,8 +114,8 @@ struct SmartCleanView: View {
 
             if hasFullDiskAccess {
                 Button {
-                    checkedPermissions = true
-                    hasScanned = true
+                    viewModel.cleanPermissionsChecked = true
+                    viewModel.hasScanned = true
                     Task { await viewModel.scanForCleanables() }
                 } label: {
                     Text("Scan")
@@ -201,7 +195,7 @@ struct SmartCleanView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 320)
             Button {
-                hasScanned = true
+                viewModel.hasScanned = true
                 Task { await viewModel.scanForCleanables() }
             } label: {
                 Text("Scan")

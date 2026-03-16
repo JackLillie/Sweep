@@ -321,8 +321,6 @@ actor MoleBridge {
                         if let cs = currentSection, !cs.items.isEmpty {
                             allSections.append(cs)
                         }
-                        let total = allSections.reduce(Int64(0)) { $0 + $1.items.reduce(Int64(0)) { $0 + $1.size } }
-                        currentActivity = "Found: \(ByteCountFormatter.string(fromByteCount: total, countStyle: .file))"
                         onUpdate(allSections, summary, currentActivity)
                     }
                     continue

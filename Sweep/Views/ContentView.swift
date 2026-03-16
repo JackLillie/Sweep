@@ -55,6 +55,8 @@ final class AppViewModel: ObservableObject {
     @Published var diskFreeBefore: Double = 0
     @Published var isLoading = true
     @Published var moleAvailable = true
+    @Published var cleanPermissionsChecked = false
+    @Published var hasScanned = false
 
     private let bridge = MoleBridge()
 
