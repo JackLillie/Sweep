@@ -161,7 +161,7 @@ struct OnboardingView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Full Disk Access")
                             .font(.system(size: 13, weight: .medium))
-                        Text(hasFullDiskAccess ? "Granted" : "Required for full functionality")
+                        Text(hasFullDiskAccess ? "Granted" : "Click +, find Sweep, and toggle it on")
                             .font(.system(size: 11))
                             .foregroundStyle(hasFullDiskAccess ? .green : .secondary)
                     }
