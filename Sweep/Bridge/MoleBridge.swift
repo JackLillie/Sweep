@@ -80,12 +80,12 @@ actor MoleBridge {
         }
     }
 
-    func runMoleText(_ command: String, arguments: [String] = []) async throws -> String {
-        let stdout = try await runMoleProcess(command, arguments: arguments)
+    func runMoleText(_ command: String, arguments: [String] = [], timeout: TimeInterval? = nil, feedStdin: Bool = false) async throws -> String {
+        let stdout = try await runMoleProcess(command, arguments: arguments, timeout: timeout, feedStdin: feedStdin)
         return stripANSI(stdout)
     }
 
-    private func runMoleProcess(_ command: String, arguments: [String]) async throws -> String {
+    private func runMoleProcess(_ command: String, arguments: [String], timeout: TimeInterval? = nil, feedStdin: Bool = false) async throws -> String {
         guard let path = molePath else {
             throw MoleBridgeError.moleNotInstalled
         }
@@ -98,6 +98,22 @@ actor MoleBridge {
         process.arguments = [command] + arguments
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
+
+        // Feed stdin with newlines to pass interactive prompts
+        if feedStdin {
+            let stdinPipe = Pipe()
+            process.standardInput = stdinPipe
+            DispatchQueue.global().async {
+                let newline = Data("\n".utf8)
+                for _ in 0..<100 {
+                    stdinPipe.fileHandleForWriting.write(newline)
+                    Thread.sleep(forTimeInterval: 0.5)
+                }
+                stdinPipe.fileHandleForWriting.closeFile()
+            }
+        }
+
+        let effectiveTimeout = timeout ?? timeoutSeconds
 
         return try await withCheckedThrowingContinuation { continuation in
             let resumed = NSLock()
@@ -116,7 +132,7 @@ actor MoleBridge {
                 resumeOnce(with: .failure(MoleBridgeError.timeout))
             }
             DispatchQueue.global().asyncAfter(
-                deadline: .now() + timeoutSeconds,
+                deadline: .now() + effectiveTimeout,
                 execute: timeoutItem
             )
 
@@ -205,14 +221,141 @@ actor MoleBridge {
     // MARK: - Smart Clean (Mole-backed)
 
     func scanForCleanables() async -> ([CleanSection], CleanSummary) {
-        guard let output = try? await runMoleText("clean", arguments: ["--dry-run"]) else {
+        guard let output = try? await runMoleText("clean", arguments: ["--dry-run"], timeout: 120, feedStdin: true) else {
             return ([], CleanSummary())
         }
         return parseDryRunOutput(output)
     }
 
+    func scanForCleanablesStreaming(onUpdate: @escaping @Sendable ([CleanSection], CleanSummary, String) -> Void) async -> ([CleanSection], CleanSummary) {
+        guard let path = molePath else { return ([], CleanSummary()) }
+
+        let process = Process()
+        let stdoutPipe = Pipe()
+        let stdinPipe = Pipe()
+
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = ["clean", "--dry-run"]
+        process.standardOutput = stdoutPipe
+        process.standardError = Pipe()
+        process.standardInput = stdinPipe
+
+        // Feed stdin
+        DispatchQueue.global().async {
+            let newline = Data("\n".utf8)
+            for _ in 0..<200 {
+                stdinPipe.fileHandleForWriting.write(newline)
+                Thread.sleep(forTimeInterval: 0.3)
+            }
+            stdinPipe.fileHandleForWriting.closeFile()
+        }
+
+        do {
+            try process.run()
+        } catch {
+            return ([], CleanSummary())
+        }
+
+        var sections: [CleanSection] = []
+        var currentSection: CleanSection?
+        var summary = CleanSummary()
+        var buffer = ""
+        var currentActivity = ""
+
+        let handle = stdoutPipe.fileHandleForReading
+
+        while process.isRunning || handle.availableData.count > 0 {
+            let data = handle.availableData
+            if data.isEmpty { break }
+
+            guard let chunk = String(data: data, encoding: .utf8) else { continue }
+            buffer += chunk
+
+            while let newlineRange = buffer.range(of: "\n") {
+                let rawLine = String(buffer[buffer.startIndex..<newlineRange.lowerBound])
+                buffer = String(buffer[newlineRange.upperBound...])
+
+                let line = stripANSI(rawLine).trimmingCharacters(in: .whitespaces)
+                if line.isEmpty { continue }
+
+                // Section header
+                if line.hasPrefix("➤") {
+                    if let section = currentSection, !section.items.isEmpty {
+                        sections.append(section)
+                    }
+                    let name = line.dropFirst(1).trimmingCharacters(in: .whitespaces)
+                    currentSection = CleanSection(name: name)
+                    currentActivity = "Scanning \(name)..."
+                    onUpdate(sections, summary, currentActivity)
+                    continue
+                }
+
+                // Cleanable item
+                if line.hasPrefix("→") {
+                    let content = line.dropFirst(1).trimmingCharacters(in: .whitespaces)
+                    guard content.contains("dry") else { continue }
+
+                    let parts = content.components(separatedBy: ",")
+                    let name: String
+                    let sizeText: String
+                    let sizeBytes: Int64
+
+                    if parts.count >= 2 {
+                        name = parts[0].trimmingCharacters(in: .whitespaces)
+                            .replacingOccurrences(of: " dry", with: "")
+                        sizeText = parts[1].trimmingCharacters(in: .whitespaces)
+                            .replacingOccurrences(of: " dry", with: "")
+                        sizeBytes = parseHumanSize(sizeText)
+                    } else {
+                        name = content.replacingOccurrences(of: " dry", with: "")
+                        sizeText = ""
+                        sizeBytes = 0
+                    }
+
+                    if sizeBytes > 0 {
+                        currentSection?.items.append(CleanItem(
+                            name: name, size: sizeBytes, sizeText: sizeText
+                        ))
+                        // Update with current state
+                        var allSections = sections
+                        if let cs = currentSection, !cs.items.isEmpty {
+                            allSections.append(cs)
+                        }
+                        let total = allSections.reduce(Int64(0)) { $0 + $1.items.reduce(Int64(0)) { $0 + $1.size } }
+                        currentActivity = "Found: \(ByteCountFormatter.string(fromByteCount: total, countStyle: .file))"
+                        onUpdate(allSections, summary, currentActivity)
+                    }
+                    continue
+                }
+
+                // Summary
+                if line.contains("Potential space:") || line.contains("Space freed:") {
+                    if let sizeMatch = line.range(of: #"[\d.]+[KMGTP]?B"#, options: .regularExpression) {
+                        summary.totalSize = String(line[sizeMatch])
+                    }
+                    if let itemMatch = line.range(of: #"Items: (\d+)"#, options: .regularExpression) {
+                        let numStr = line[itemMatch].components(separatedBy: " ").last ?? "0"
+                        summary.itemCount = Int(numStr) ?? 0
+                    }
+                    if let catMatch = line.range(of: #"Categories: (\d+)"#, options: .regularExpression) {
+                        let numStr = line[catMatch].components(separatedBy: " ").last ?? "0"
+                        summary.categoryCount = Int(numStr) ?? 0
+                    }
+                }
+            }
+        }
+
+        process.waitUntilExit()
+
+        if let section = currentSection, !section.items.isEmpty {
+            sections.append(section)
+        }
+
+        return (sections, summary)
+    }
+
     func runClean() async throws -> String {
-        try await runMoleText("clean")
+        try await runMoleText("clean", timeout: 300, feedStdin: true)
     }
 
     private func parseDryRunOutput(_ output: String) -> ([CleanSection], CleanSummary) {

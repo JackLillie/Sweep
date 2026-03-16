@@ -72,10 +72,28 @@ final class AppViewModel: ObservableObject {
         isLoading = false
     }
 
+    @Published var scanActivity = ""
+    private var scanTask: Task<Void, Never>?
+
+    func cancelScan() {
+        scanTask?.cancel()
+        isScanning = false
+        scanActivity = ""
+    }
+
     func scanForCleanables() async {
         isScanning = true
         diskFreeBefore = systemInfo.diskFree
-        let (sections, summary) = await bridge.scanForCleanables()
+        scanActivity = "Starting scan..."
+
+        let (sections, summary) = await bridge.scanForCleanablesStreaming { [weak self] liveSections, liveSummary, activity in
+            Task { @MainActor in
+                self?.cleanSections = liveSections
+                self?.cleanSummary = liveSummary
+                self?.scanActivity = activity
+            }
+        }
+
         cleanSections = sections
         cleanSummary = summary
         isScanning = false

@@ -4,21 +4,16 @@ struct SmartCleanView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var hasScanned = false
     @State private var showCleanConfirm = false
+    @State private var hasFullDiskAccess = false
+    @State private var hasAutomationAccess = false
+    @State private var checkedPermissions = false
 
     var body: some View {
         Group {
-            if viewModel.isScanning {
-                VStack(spacing: 12) {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                    Text("Scanning your Mac...")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                    Text("This may take a moment")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if !checkedPermissions {
+                permissionsSetupView
+            } else if viewModel.isScanning {
+                scanningView
             } else if viewModel.isCleaning {
                 VStack(spacing: 12) {
                     ProgressView()
@@ -41,10 +36,9 @@ struct SmartCleanView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .toolbarBackground(.hidden, for: .windowToolbar)
         .navigationTitle("")
-        .onAppear {
-            if !hasScanned && !viewModel.hasCleanableItems {
-                hasScanned = true
-                Task { await viewModel.scanForCleanables() }
+        .onDisappear {
+            if viewModel.isScanning {
+                viewModel.cancelScan()
             }
         }
         .alert("Clean Selected Items?", isPresented: $showCleanConfirm) {
@@ -54,6 +48,199 @@ struct SmartCleanView: View {
             }
         } message: {
             Text("This will permanently remove \(viewModel.formattedCleanableSize) of files. This cannot be undone.")
+        }
+    }
+
+    // MARK: - Scanning (Live)
+
+    private var scanningView: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Live header
+                    GroupBox {
+                        HStack(spacing: 12) {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                                .frame(width: 20, height: 20)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(viewModel.scanActivity)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .lineLimit(1)
+
+                                if viewModel.totalCleanableSize > 0 {
+                                    Text("\(viewModel.formattedCleanableSize) found so far")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                        }
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 4)
+                    }
+
+                    // Live sections appearing
+                    ForEach(viewModel.cleanSections) { section in
+                        GroupBox {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: section.icon)
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(section.color)
+                                        .frame(width: 18)
+
+                                    Text(section.name)
+                                        .font(.system(size: 13, weight: .medium))
+
+                                    Spacer()
+
+                                    Text(section.formattedSize)
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                ForEach(section.items.prefix(5)) { item in
+                                    HStack {
+                                        Text(item.name)
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                        Spacer()
+                                        Text(item.formattedSize)
+                                            .font(.system(size: 10, design: .monospaced))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                }
+
+                                if section.items.count > 5 {
+                                    Text("+\(section.items.count - 5) more")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                            .padding(.horizontal, 4)
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
+            }
+        }
+    }
+
+    // MARK: - Permissions Setup
+
+    private var permissionsSetupView: some View {
+        VStack(spacing: 20) {
+            Spacer()
+
+            Image(systemName: "sparkles")
+                .font(.system(size: 36))
+                .foregroundStyle(.purple)
+
+            VStack(spacing: 6) {
+                Text("Smart Clean")
+                    .font(.system(size: 18, weight: .semibold))
+                Text("Sweep scans caches, logs, browser data, dev tools, and more.\nFor a thorough scan, grant Full Disk Access.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 380)
+            }
+
+            VStack(spacing: 8) {
+                permissionRow(
+                    icon: "lock.shield.fill",
+                    title: "Full Disk Access",
+                    granted: hasFullDiskAccess,
+                    settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+                )
+
+                permissionRow(
+                    icon: "gearshape.2.fill",
+                    title: "Automation (Finder)",
+                    granted: hasAutomationAccess,
+                    settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
+                )
+            }
+            .frame(maxWidth: 400)
+
+            if hasFullDiskAccess && hasAutomationAccess {
+                Button {
+                    checkedPermissions = true
+                    hasScanned = true
+                    Task { await viewModel.scanForCleanables() }
+                } label: {
+                    Text("Scan")
+                        .frame(minWidth: 100)
+                }
+                .controlSize(.large)
+                .buttonStyle(.borderedProminent)
+            } else {
+                Text("Grant the permissions above in System Settings, then come back here.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 380)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { checkFDA() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            checkFDA()
+        }
+    }
+
+    private func checkFDA() {
+        let tccPath = "/Library/Application Support/com.apple.TCC/TCC.db"
+        hasFullDiskAccess = FileManager.default.isReadableFile(atPath: tccPath)
+        checkAutomation()
+    }
+
+    private func checkAutomation() {
+        let script = NSAppleScript(source: "tell application \"Finder\" to get name of startup disk")
+        var error: NSDictionary?
+        script?.executeAndReturnError(&error)
+        hasAutomationAccess = (error == nil)
+    }
+
+    private func permissionRow(icon: String, title: String, granted: Bool, settingsURL: String) -> some View {
+        GroupBox {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 18))
+                    .foregroundStyle(granted ? .green : .orange)
+                    .frame(width: 28)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .medium))
+                    Text(granted ? "Granted" : "Required")
+                        .font(.system(size: 11))
+                        .foregroundStyle(granted ? .green : .secondary)
+                }
+
+                Spacer()
+
+                if granted {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                } else {
+                    Button("Open Settings") {
+                        if let url = URL(string: settingsURL) {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .controlSize(.small)
+                }
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 4)
         }
     }
 
