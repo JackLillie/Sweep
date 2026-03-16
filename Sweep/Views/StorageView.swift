@@ -492,7 +492,6 @@ struct StorageView: View {
                     }
                 }
                 .listStyle(.inset)
-                .scrollContentBackground(.hidden)
             }
         }
     }

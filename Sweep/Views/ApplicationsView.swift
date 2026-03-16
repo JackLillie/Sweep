@@ -81,14 +81,13 @@ struct ApplicationsView: View {
                         }
                     }
                     .listStyle(.inset)
-                    .scrollContentBackground(.hidden)
                 }
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .toolbarBackground(.hidden, for: .windowToolbar)
         .navigationTitle("")
-        .searchable(text: $searchText, placement: .toolbar, prompt: "Filter applications")
+        .searchable(text: $searchText, prompt: "Filter applications")
         .onAppear {
             if !viewModel.appsScanned {
                 viewModel.appsScanned = true

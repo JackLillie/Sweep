@@ -28,7 +28,6 @@ struct OverviewView: View {
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .scrollContentBackground(.hidden)
         .toolbarBackground(.hidden, for: .windowToolbar)
         .navigationTitle("")
         .onAppear { startRefresh() }

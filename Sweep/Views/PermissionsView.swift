@@ -197,23 +197,24 @@ struct PermissionsView: View {
     private func scanPermissions() async {
         isLoading = true
         hasScanned = true
-        defer { isLoading = false }
 
-        var allEntries: [(service: String, client: String, authValue: Int)] = []
-
-        // Read both user and system TCC databases
         let dbPaths = [
             "/Library/Application Support/com.apple.TCC/TCC.db",
             NSHomeDirectory() + "/Library/Application Support/com.apple.TCC/TCC.db"
         ]
 
-        for dbPath in dbPaths {
-            if let entries = readTCCDatabase(path: dbPath) {
-                allEntries.append(contentsOf: entries)
+        let allEntries: [(service: String, client: String, authValue: Int)] = await Task.detached {
+            var entries: [(service: String, client: String, authValue: Int)] = []
+            for dbPath in dbPaths {
+                if let dbEntries = Self.readTCCDatabase(path: dbPath) {
+                    entries.append(contentsOf: dbEntries)
+                }
             }
-        }
+            return entries
+        }.value
 
-        // Group by service
+        defer { isLoading = false }
+
         var grouped: [String: [PermissionEntry]] = [:]
         for entry in allEntries {
             let serviceName = mapServiceName(entry.service)
@@ -247,7 +248,7 @@ struct PermissionsView: View {
             .sorted { $0.entries.count > $1.entries.count }
     }
 
-    private func readTCCDatabase(path: String) -> [(service: String, client: String, authValue: Int)]? {
+    private static func readTCCDatabase(path: String) -> [(service: String, client: String, authValue: Int)]? {
         let process = Process()
         let pipe = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")

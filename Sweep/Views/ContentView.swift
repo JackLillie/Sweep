@@ -3,10 +3,13 @@ import SwiftUI
 struct ContentView: View {
     @State private var selectedItem: NavigationItem? = .overview
     @ObservedObject var viewModel: AppViewModel
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     var body: some View {
         Group {
-            if viewModel.moleAvailable {
+            if !hasCompletedOnboarding {
+                OnboardingView(hasCompletedOnboarding: $hasCompletedOnboarding)
+            } else if viewModel.moleAvailable {
                 NavigationSplitView {
                     SidebarView(selection: $selectedItem)
                 } detail: {
@@ -27,7 +30,6 @@ struct ContentView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .contentMargins(.top, 0, for: .scrollContent)
                 }
             } else {
                 MoleNotFoundView {
