@@ -69,8 +69,8 @@ actor MoleBridge {
 
     // MARK: - Core Runners
 
-    func runMoleJSON<T: Decodable>(_ command: String, arguments: [String] = []) async throws -> T {
-        let stdout = try await runMoleProcess(command, arguments: arguments)
+    func runMoleJSON<T: Decodable>(_ command: String, arguments: [String] = [], timeout: TimeInterval? = nil) async throws -> T {
+        let stdout = try await runMoleProcess(command, arguments: arguments, timeout: timeout)
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         do {
@@ -170,7 +170,7 @@ actor MoleBridge {
     }
 
     func analyze(path: String) async throws -> MoleAnalysis {
-        try await runMoleJSON("analyze", arguments: ["--json", path])
+        try await runMoleJSON("analyze", arguments: ["--json", path], timeout: 120)
     }
 
     func cleanDryRun() async throws -> String {
