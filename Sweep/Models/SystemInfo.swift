@@ -11,6 +11,15 @@ struct SystemInfo {
     var diskTotal: Double = 0
     var uptimeDays: Int = 0
     var uptimeHours: Int = 0
+    var uptime: String = ""
+    var healthScore: Int = 0
+    var healthScoreMsg: String = ""
+    var networkDown: Double = 0
+    var networkUp: Double = 0
+    var batteryPercent: Double = 0
+    var batteryStatus: String = ""
+    var hasBattery: Bool = false
+    var cpuTemp: Double = 0
 
     var memoryPercentage: Double {
         guard memoryTotal > 0 else { return 0 }
@@ -24,6 +33,50 @@ struct SystemInfo {
 
     var diskFree: Double {
         diskTotal - diskUsed
+    }
+
+    init() {}
+
+    init(from status: MoleStatus) {
+        hostname = status.host
+        macModel = status.hardware.model
+        osVersion = status.hardware.osVersion
+        uptime = status.uptime
+        healthScore = status.healthScore
+        healthScoreMsg = status.healthScoreMsg
+
+        // CPU: mole gives 0-100, views use 0-1
+        cpuUsage = status.cpu.usage / 100.0
+
+        // Memory: mole gives bytes, views use GB
+        memoryUsed = Double(status.memory.used) / 1_073_741_824
+        memoryTotal = Double(status.memory.total) / 1_073_741_824
+
+        // Disk: use first non-external disk
+        if let disk = status.disks.first(where: { !$0.external }) ?? status.disks.first {
+            diskUsed = Double(disk.used) / 1_000_000_000
+            diskTotal = Double(disk.total) / 1_000_000_000
+        }
+
+        // Parse uptime string (e.g. "3d 12h 45m") into days/hours
+        let parts = status.uptime.components(separatedBy: " ")
+        for part in parts {
+            if part.hasSuffix("d"), let n = Int(part.dropLast()) { uptimeDays = n }
+            if part.hasSuffix("h"), let n = Int(part.dropLast()) { uptimeHours = n }
+        }
+
+        // Network: sum all interfaces
+        networkDown = status.network.reduce(0) { $0 + $1.rxRateMbs }
+        networkUp = status.network.reduce(0) { $0 + $1.txRateMbs }
+
+        // Battery
+        if let battery = status.batteries.first {
+            hasBattery = true
+            batteryPercent = battery.percent
+            batteryStatus = battery.status
+        }
+
+        cpuTemp = status.thermal.cpuTemp
     }
 }
 

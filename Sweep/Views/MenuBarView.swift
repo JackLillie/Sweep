@@ -121,8 +121,8 @@ struct MenuBarView: View {
         }
         .frame(width: 280)
         .task {
-            let info = await bridge.fetchSystemInfo()
-            systemInfo = info
+            let status = await bridge.fetchStatus()
+            systemInfo = SystemInfo(from: status)
             isLoading = false
         }
     }

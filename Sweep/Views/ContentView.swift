@@ -64,8 +64,8 @@ final class AppViewModel: ObservableObject {
 
     func loadSystemInfo() async {
         isLoading = true
-        let info = await bridge.fetchSystemInfo()
-        systemInfo = info
+        let status = await bridge.fetchStatus()
+        systemInfo = SystemInfo(from: status)
         isLoading = false
     }
 

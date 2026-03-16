@@ -165,48 +165,6 @@ actor MoleBridge {
         try await runMoleText("clean")
     }
 
-    // MARK: - System Info
-
-    func fetchSystemInfo() -> SystemInfo {
-        var info = SystemInfo()
-
-        info.hostname = Host.current().localizedName ?? "Mac"
-
-        let version = ProcessInfo.processInfo.operatingSystemVersion
-        info.osVersion = "macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
-
-        if let model = runShell("/usr/sbin/sysctl", arguments: ["-n", "hw.model"]) {
-            info.macModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-
-        let physMem = ProcessInfo.processInfo.physicalMemory
-        info.memoryTotal = Double(physMem) / 1_073_741_824
-
-        if let vmStat = runShell("/usr/bin/vm_stat", arguments: []) {
-            info.memoryUsed = parseMemoryUsage(vmStat, totalGB: info.memoryTotal)
-        }
-
-        if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: "/") {
-            if let totalSize = attrs[.systemSize] as? Int64 {
-                info.diskTotal = Double(totalSize) / 1_000_000_000
-            }
-            if let freeSize = attrs[.systemFreeSize] as? Int64 {
-                let totalSize = (attrs[.systemSize] as? Int64) ?? 0
-                info.diskUsed = Double(totalSize - freeSize) / 1_000_000_000
-            }
-        }
-
-        if let topOutput = runShell("/usr/bin/top", arguments: ["-l", "1", "-n", "0", "-stats", "cpu"]) {
-            info.cpuUsage = parseCPUUsage(topOutput)
-        }
-
-        let uptime = ProcessInfo.processInfo.systemUptime
-        info.uptimeDays = Int(uptime) / 86400
-        info.uptimeHours = (Int(uptime) % 86400) / 3600
-
-        return info
-    }
-
     // MARK: - Scanning
 
     func scanForCleanables() -> [CleanableItem] {
@@ -323,51 +281,4 @@ actor MoleBridge {
         return totalSize > 0 ? totalSize : nil
     }
 
-    private func parseMemoryUsage(_ vmStatOutput: String, totalGB: Double) -> Double {
-        let lines = vmStatOutput.components(separatedBy: "\n")
-        var pagesActive: Double = 0
-        var pagesWired: Double = 0
-        var pagesCompressed: Double = 0
-
-        for line in lines {
-            if line.contains("Pages active") {
-                pagesActive = extractPageCount(line)
-            } else if line.contains("Pages wired") {
-                pagesWired = extractPageCount(line)
-            } else if line.contains("Pages occupied by compressor") {
-                pagesCompressed = extractPageCount(line)
-            }
-        }
-
-        let pageSize: Double = 16384
-        let usedBytes = (pagesActive + pagesWired + pagesCompressed) * pageSize
-        return usedBytes / 1_073_741_824
-    }
-
-    private func extractPageCount(_ line: String) -> Double {
-        let parts = line.components(separatedBy: ":")
-        guard parts.count >= 2 else { return 0 }
-        let numStr = parts[1].trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ".", with: "")
-        return Double(numStr) ?? 0
-    }
-
-    private func parseCPUUsage(_ topOutput: String) -> Double {
-        let lines = topOutput.components(separatedBy: "\n")
-        for line in lines {
-            if line.contains("CPU usage") {
-                let parts = line.components(separatedBy: ",")
-                var totalUsage: Double = 0
-                for part in parts {
-                    if part.contains("user") || part.contains("sys") {
-                        let numStr = part.trimmingCharacters(in: .whitespaces)
-                            .components(separatedBy: "%").first?
-                            .trimmingCharacters(in: .letters.union(.whitespaces).union(.punctuationCharacters)) ?? "0"
-                        totalUsage += Double(numStr) ?? 0
-                    }
-                }
-                return min(totalUsage / 100.0, 1.0)
-            }
-        }
-        return 0
-    }
 }
