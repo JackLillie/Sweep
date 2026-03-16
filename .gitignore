@@ -21,6 +21,9 @@ Package.resolved
 *.swp
 *~
 
+# Build artifacts
+*.dmg
+
 # Local
 TODO.md
 .claude/
