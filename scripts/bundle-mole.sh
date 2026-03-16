@@ -12,7 +12,6 @@ echo "Bundling Mole from ${MOLE_SRC}..."
 # Clean previous bundle
 rm -rf "${BUNDLE_DIR}"
 mkdir -p "${BUNDLE_DIR}/bin"
-mkdir -p "${BUNDLE_DIR}/lib"
 
 # Build Go binaries
 echo "Building Go binaries..."
