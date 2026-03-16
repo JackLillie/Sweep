@@ -202,69 +202,131 @@ actor MoleBridge {
         }
     }
 
-    // MARK: - Scanning
+    // MARK: - Smart Clean (Mole-backed)
 
-    func scanForCleanables() -> [CleanableItem] {
-        var items: [CleanableItem] = []
-
-        let cacheDir = NSHomeDirectory() + "/Library/Caches"
-        if let size = directorySize(cacheDir) {
-            items.append(CleanableItem(
-                name: "User Cache",
-                category: .userCache,
-                size: size,
-                path: cacheDir
-            ))
+    func scanForCleanables() async -> ([CleanSection], CleanSummary) {
+        guard let output = try? await runMoleText("clean", arguments: ["--dry-run"]) else {
+            return ([], CleanSummary())
         }
-
-        let logsDir = NSHomeDirectory() + "/Library/Logs"
-        if let size = directorySize(logsDir) {
-            items.append(CleanableItem(
-                name: "User Logs",
-                category: .logs,
-                size: size,
-                path: logsDir
-            ))
-        }
-
-        let derivedData = NSHomeDirectory() + "/Library/Developer/Xcode/DerivedData"
-        if let size = directorySize(derivedData) {
-            items.append(CleanableItem(
-                name: "Xcode Derived Data",
-                category: .xcode,
-                size: size,
-                path: derivedData
-            ))
-        }
-
-        let trashDir = NSHomeDirectory() + "/.Trash"
-        if let size = directorySize(trashDir) {
-            items.append(CleanableItem(
-                name: "Trash",
-                category: .trash,
-                size: size,
-                path: trashDir
-            ))
-        }
-
-        let systemCacheDir = "/Library/Caches"
-        if let size = directorySize(systemCacheDir) {
-            items.append(CleanableItem(
-                name: "System Cache",
-                category: .systemCache,
-                size: size,
-                path: systemCacheDir
-            ))
-        }
-
-        return items.sorted { $0.size > $1.size }
+        return parseDryRunOutput(output)
     }
 
-    // MARK: - Legacy Command Runner
+    func runClean() async throws -> String {
+        try await runMoleText("clean")
+    }
 
-    func runMoleCommand(_ command: String, arguments: [String] = []) -> String? {
-        guard let path = molePath else { return nil }
-        return runShell(path, arguments: [command] + arguments)
+    private func parseDryRunOutput(_ output: String) -> ([CleanSection], CleanSummary) {
+        var sections: [CleanSection] = []
+        var currentSection: CleanSection?
+        var summary = CleanSummary()
+
+        for line in output.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            // Section header: ➤ Category name
+            if trimmed.hasPrefix("➤") {
+                if let section = currentSection, !section.items.isEmpty {
+                    sections.append(section)
+                }
+                let name = trimmed.dropFirst(1).trimmingCharacters(in: .whitespaces)
+                currentSection = CleanSection(name: name)
+                continue
+            }
+
+            // Cleanable item: → Name [N items], SIZE dry
+            if trimmed.hasPrefix("→") {
+                let content = trimmed.dropFirst(1).trimmingCharacters(in: .whitespaces)
+
+                // Skip lines that just say "would clean" with no size
+                guard content.contains("dry") else {
+                    // Still add items like "npm cache · would clean" as info
+                    continue
+                }
+
+                // Parse: "User app cache 151 items, 5.64GB dry"
+                let parts = content.components(separatedBy: ",")
+                let name: String
+                let sizeText: String
+                let sizeBytes: Int64
+
+                if parts.count >= 2 {
+                    name = parts[0].trimmingCharacters(in: .whitespaces)
+                        .replacingOccurrences(of: " dry", with: "")
+                    sizeText = parts[1].trimmingCharacters(in: .whitespaces)
+                        .replacingOccurrences(of: " dry", with: "")
+                    sizeBytes = parseHumanSize(sizeText)
+                } else {
+                    name = content.replacingOccurrences(of: " dry", with: "")
+                    sizeText = ""
+                    sizeBytes = 0
+                }
+
+                // Skip 0-byte items
+                if sizeBytes > 0 {
+                    currentSection?.items.append(CleanItem(
+                        name: name,
+                        size: sizeBytes,
+                        sizeText: sizeText
+                    ))
+                }
+                continue
+            }
+
+            // Summary line: Potential space: 113.03GB | Items: 742 | Categories: 184
+            if trimmed.contains("Potential space:") || trimmed.contains("Space freed:") {
+                if let sizeMatch = trimmed.range(of: #"[\d.]+[KMGTP]?B"#, options: .regularExpression) {
+                    summary.totalSize = String(trimmed[sizeMatch])
+                }
+                if let itemMatch = trimmed.range(of: #"Items: (\d+)"#, options: .regularExpression) {
+                    let numStr = trimmed[itemMatch].components(separatedBy: " ").last ?? "0"
+                    summary.itemCount = Int(numStr) ?? 0
+                }
+                if let catMatch = trimmed.range(of: #"Categories: (\d+)"#, options: .regularExpression) {
+                    let numStr = trimmed[catMatch].components(separatedBy: " ").last ?? "0"
+                    summary.categoryCount = Int(numStr) ?? 0
+                }
+            }
+        }
+
+        // Add last section
+        if let section = currentSection, !section.items.isEmpty {
+            sections.append(section)
+        }
+
+        return (sections, summary)
+    }
+
+    private func parseHumanSize(_ text: String) -> Int64 {
+        let cleaned = text.trimmingCharacters(in: .whitespaces)
+        guard !cleaned.isEmpty else { return 0 }
+
+        let number: Double
+        let multiplier: Double
+
+        if cleaned.hasSuffix("TB") {
+            number = Double(cleaned.dropLast(2)) ?? 0
+            multiplier = 1_000_000_000_000
+        } else if cleaned.hasSuffix("GB") {
+            number = Double(cleaned.dropLast(2)) ?? 0
+            multiplier = 1_000_000_000
+        } else if cleaned.hasSuffix("Gi") {
+            number = Double(cleaned.dropLast(2)) ?? 0
+            multiplier = 1_073_741_824
+        } else if cleaned.hasSuffix("MB") {
+            number = Double(cleaned.dropLast(2)) ?? 0
+            multiplier = 1_000_000
+        } else if cleaned.hasSuffix("KB") {
+            number = Double(cleaned.dropLast(2)) ?? 0
+            multiplier = 1_000
+        } else if cleaned.hasSuffix("B") {
+            number = Double(cleaned.dropLast(1)) ?? 0
+            multiplier = 1
+        } else {
+            number = Double(cleaned) ?? 0
+            multiplier = 1
+        }
+
+        return Int64(number * multiplier)
     }
 
     // MARK: - Helpers
@@ -294,28 +356,6 @@ actor MoleBridge {
         } catch {
             return nil
         }
-    }
-
-    private func directorySize(_ path: String) -> Int64? {
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: path) else { return nil }
-
-        guard let enumerator = fm.enumerator(
-            at: URL(fileURLWithPath: path),
-            includingPropertiesForKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey],
-            options: [.skipsHiddenFiles],
-            errorHandler: nil
-        ) else { return nil }
-
-        var totalSize: Int64 = 0
-        for case let url as URL in enumerator {
-            guard let values = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey]),
-                  values.isRegularFile == true,
-                  let size = values.totalFileAllocatedSize else { continue }
-            totalSize += Int64(size)
-        }
-
-        return totalSize > 0 ? totalSize : nil
     }
 
 }

@@ -47,8 +47,12 @@ struct ContentView: View {
 @MainActor
 final class AppViewModel: ObservableObject {
     @Published var systemInfo = SystemInfo()
-    @Published var cleanableItems: [CleanableItem] = []
+    @Published var cleanSections: [CleanSection] = []
+    @Published var cleanSummary = CleanSummary()
     @Published var isScanning = false
+    @Published var isCleaning = false
+    @Published var cleanResult: String?
+    @Published var diskFreeBefore: Double = 0
     @Published var isLoading = true
     @Published var moleAvailable = true
 
@@ -70,9 +74,26 @@ final class AppViewModel: ObservableObject {
 
     func scanForCleanables() async {
         isScanning = true
-        let items = await bridge.scanForCleanables()
-        cleanableItems = items
+        diskFreeBefore = systemInfo.diskFree
+        let (sections, summary) = await bridge.scanForCleanables()
+        cleanSections = sections
+        cleanSummary = summary
         isScanning = false
+    }
+
+    func runClean() async {
+        isCleaning = true
+        do {
+            let result = try await bridge.runClean()
+            cleanResult = result
+            cleanSections = []
+            cleanSummary = CleanSummary()
+            // Refresh system info to show updated disk space
+            await loadSystemInfo()
+        } catch {
+            actionError = error.localizedDescription
+        }
+        isCleaning = false
     }
 
     @Published var actionError: String?
@@ -102,10 +123,14 @@ final class AppViewModel: ObservableObject {
     }
 
     var totalCleanableSize: Int64 {
-        cleanableItems.filter(\.isSelected).reduce(0) { $0 + $1.size }
+        cleanSections.reduce(0) { $0 + $1.totalSize }
     }
 
     var formattedCleanableSize: String {
         ByteCountFormatter.string(fromByteCount: totalCleanableSize, countStyle: .file)
+    }
+
+    var hasCleanableItems: Bool {
+        !cleanSections.isEmpty
     }
 }

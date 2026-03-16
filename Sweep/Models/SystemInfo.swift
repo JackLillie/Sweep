@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 struct SystemInfo {
     var hostname: String = ""
@@ -80,48 +81,66 @@ struct SystemInfo {
     }
 }
 
-struct CleanableItem: Identifiable {
+// MARK: - Mole Clean Scan Result
+
+struct CleanSection: Identifiable {
     let id = UUID()
     let name: String
-    let category: CleanableCategory
-    let size: Int64
-    let path: String
+    var items: [CleanItem] = []
     var isSelected: Bool = true
 
-    var formattedSize: String {
-        ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+    var totalSize: Int64 { items.filter(\.isSelected).reduce(0) { $0 + $1.size } }
+    var formattedSize: String { ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file) }
+
+    var icon: String {
+        switch name.lowercased() {
+        case let n where n.contains("user"): return "person.circle"
+        case let n where n.contains("app cache"): return "square.stack.3d.up"
+        case let n where n.contains("browser"): return "globe"
+        case let n where n.contains("cloud"): return "cloud"
+        case let n where n.contains("developer"): return "hammer"
+        case let n where n.contains("application"): return "app"
+        case let n where n.contains("virtual"): return "desktopcomputer"
+        case let n where n.contains("orphan"): return "trash.circle"
+        case let n where n.contains("backup"): return "externaldrive"
+        case let n where n.contains("time machine"): return "clock.arrow.circlepath"
+        case let n where n.contains("large"): return "doc.richtext"
+        case let n where n.contains("system"): return "gearshape"
+        case let n where n.contains("project"): return "folder"
+        case let n where n.contains("support"): return "wrench"
+        default: return "folder.badge.gearshape"
+        }
+    }
+
+    var color: Color {
+        switch name.lowercased() {
+        case let n where n.contains("user"): return .purple
+        case let n where n.contains("browser"): return .blue
+        case let n where n.contains("developer"): return .orange
+        case let n where n.contains("application"): return .indigo
+        case let n where n.contains("orphan"): return .red
+        case let n where n.contains("cloud"): return .cyan
+        default: return .secondary
+        }
     }
 }
 
-enum CleanableCategory: String, CaseIterable {
-    case systemCache = "System Cache"
-    case userCache = "User Cache"
-    case logs = "Logs"
-    case trash = "Trash"
-    case downloads = "Old Downloads"
-    case xcode = "Xcode Derived Data"
+struct CleanItem: Identifiable {
+    let id = UUID()
+    let name: String
+    let size: Int64
+    let sizeText: String
+    var isSelected: Bool = true
 
-    var icon: String {
-        switch self {
-        case .systemCache: "cpu"
-        case .userCache: "person.circle"
-        case .logs: "doc.text"
-        case .trash: "trash"
-        case .downloads: "arrow.down.circle"
-        case .xcode: "hammer"
-        }
+    var formattedSize: String {
+        size > 0 ? ByteCountFormatter.string(fromByteCount: size, countStyle: .file) : sizeText
     }
+}
 
-    var color: String {
-        switch self {
-        case .systemCache: "blue"
-        case .userCache: "purple"
-        case .logs: "orange"
-        case .trash: "red"
-        case .downloads: "green"
-        case .xcode: "indigo"
-        }
-    }
+struct CleanSummary {
+    var totalSize: String = ""
+    var itemCount: Int = 0
+    var categoryCount: Int = 0
 }
 
 struct AppInfo: Identifiable {
