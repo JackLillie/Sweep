@@ -164,68 +164,80 @@ final class AppViewModel: ObservableObject {
     @Published var largeFiles: [MoleAnalysis.Entry] = []
     @Published var isLoadingStorage = false
     @Published var storageScanned = false
+    @Published var storageActivity = "Starting analysis..."
     @Published var drillDownEntries: [MoleAnalysis.Entry] = []
     @Published var drillDownPath: String?
 
     func loadStorage() async {
         isLoadingStorage = true
+        storageCategories = []
+        largeFiles = []
 
-        // Analyze home directory
-        let analysis = try? await bridge.analyze(path: NSHomeDirectory())
-        let appsAnalysis = try? await bridge.analyze(path: "/Applications")
-
-        var categories: [StorageCategory] = []
-
-        // Applications
-        let appsSize = appsAnalysis?.entries.reduce(Int64(0)) { $0 + $1.size } ?? 0
-        if appsSize > 0 {
-            categories.append(StorageCategory(name: "Applications", size: appsSize, color: "blue", icon: "app.fill"))
+        // Analyze /Applications
+        storageActivity = "Analyzing Applications..."
+        if let appsAnalysis = try? await bridge.analyze(path: "/Applications") {
+            let appsSize = appsAnalysis.entries.reduce(Int64(0)) { $0 + $1.size }
+            if appsSize > 0 {
+                storageCategories.append(StorageCategory(name: "Applications", size: appsSize, color: "blue", icon: "app.fill"))
+                storageCategories.sort { $0.size > $1.size }
+            }
         }
 
+        // Analyze home directory
+        storageActivity = "Analyzing home directory..."
+        let analysis = try? await bridge.analyze(path: NSHomeDirectory())
+
         if let entries = analysis?.entries {
-            // Developer
-            let devSize = entries.filter { $0.name == "Library" || $0.name == ".local" || $0.name == ".cargo" || $0.name == ".rustup" || $0.name == ".npm" || $0.name == ".cache" }
-                .reduce(Int64(0)) { $0 + $1.size }
+            // Developer & Libraries
+            storageActivity = "Calculating Developer & Libraries..."
+            let devNames: Set = ["Library", ".local", ".cargo", ".rustup", ".npm", ".cache", ".gradle", ".m2"]
+            let devSize = entries.filter { devNames.contains($0.name) }.reduce(Int64(0)) { $0 + $1.size }
             if devSize > 0 {
-                categories.append(StorageCategory(name: "Developer & Libraries", size: devSize, color: "purple", icon: "hammer.fill"))
+                storageCategories.append(StorageCategory(name: "Developer & Libraries", size: devSize, color: "purple", icon: "hammer.fill"))
+                storageCategories.sort { $0.size > $1.size }
             }
 
             // Documents + Desktop
-            let docsSize = entries.filter { $0.name == "Documents" || $0.name == "Desktop" }
-                .reduce(Int64(0)) { $0 + $1.size }
+            storageActivity = "Calculating Documents..."
+            let docsSize = entries.filter { $0.name == "Documents" || $0.name == "Desktop" }.reduce(Int64(0)) { $0 + $1.size }
             if docsSize > 0 {
-                categories.append(StorageCategory(name: "Documents", size: docsSize, color: "orange", icon: "doc.fill"))
+                storageCategories.append(StorageCategory(name: "Documents", size: docsSize, color: "orange", icon: "doc.fill"))
+                storageCategories.sort { $0.size > $1.size }
             }
 
             // Downloads
+            storageActivity = "Calculating Downloads..."
             let downloadsSize = entries.first(where: { $0.name == "Downloads" })?.size ?? 0
             if downloadsSize > 0 {
-                categories.append(StorageCategory(name: "Downloads", size: downloadsSize, color: "cyan", icon: "arrow.down.circle.fill"))
+                storageCategories.append(StorageCategory(name: "Downloads", size: downloadsSize, color: "cyan", icon: "arrow.down.circle.fill"))
+                storageCategories.sort { $0.size > $1.size }
             }
 
-            // Movies / Music / Pictures
-            let mediaSize = entries.filter { $0.name == "Movies" || $0.name == "Music" || $0.name == "Pictures" }
-                .reduce(Int64(0)) { $0 + $1.size }
+            // Media
+            storageActivity = "Calculating Media..."
+            let mediaSize = entries.filter { $0.name == "Movies" || $0.name == "Music" || $0.name == "Pictures" }.reduce(Int64(0)) { $0 + $1.size }
             if mediaSize > 0 {
-                categories.append(StorageCategory(name: "Media", size: mediaSize, color: "pink", icon: "photo.fill"))
+                storageCategories.append(StorageCategory(name: "Media", size: mediaSize, color: "pink", icon: "photo.fill"))
+                storageCategories.sort { $0.size > $1.size }
             }
 
             // Projects
-            let projectsSize = entries.filter { $0.name == "Projects" || $0.name == "Developer" || $0.name == "GitHub" || $0.name == "dev" || $0.name == "repos" }
-                .reduce(Int64(0)) { $0 + $1.size }
+            storageActivity = "Calculating Projects..."
+            let projNames: Set = ["Projects", "Developer", "GitHub", "dev", "repos"]
+            let projectsSize = entries.filter { projNames.contains($0.name) }.reduce(Int64(0)) { $0 + $1.size }
             if projectsSize > 0 {
-                categories.append(StorageCategory(name: "Projects", size: projectsSize, color: "green", icon: "folder.fill"))
+                storageCategories.append(StorageCategory(name: "Projects", size: projectsSize, color: "green", icon: "folder.fill"))
+                storageCategories.sort { $0.size > $1.size }
             }
 
-            // Collect large files
+            // Large files
+            storageActivity = "Finding large files..."
             largeFiles = entries.filter { !$0.isDir && $0.size > 100_000_000 }
                 .sorted { $0.size > $1.size }
                 .prefix(20)
                 .map { $0 }
         }
 
-        // Sort categories by size
-        storageCategories = categories.sorted { $0.size > $1.size }
         isLoadingStorage = false
         storageScanned = true
     }

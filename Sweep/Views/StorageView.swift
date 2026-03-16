@@ -3,18 +3,14 @@ import SwiftUI
 struct StorageView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var selectedCategory: StorageCategory?
+    @State private var hasFullDiskAccess = false
 
     var body: some View {
         Group {
             if viewModel.isLoadingStorage {
-                VStack(spacing: 12) {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                    Text("Analyzing storage...")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                scanningView
+            } else if !viewModel.storageScanned {
+                setupView
             } else if let path = viewModel.drillDownPath {
                 drillDownView(path: path)
             } else {
@@ -24,10 +20,141 @@ struct StorageView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .toolbarBackground(.hidden, for: .windowToolbar)
         .navigationTitle("")
-        .onAppear {
-            if !viewModel.storageScanned {
-                Task { await viewModel.loadStorage() }
+        .onAppear { checkFDA() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            checkFDA()
+        }
+    }
+
+    private func checkFDA() {
+        let tccPath = "/Library/Application Support/com.apple.TCC/TCC.db"
+        hasFullDiskAccess = FileManager.default.isReadableFile(atPath: tccPath)
+    }
+
+    // MARK: - Setup View
+
+    private var setupView: some View {
+        VStack(spacing: 20) {
+            Spacer()
+
+            Image(systemName: "internaldrive")
+                .font(.system(size: 36))
+                .foregroundStyle(.blue)
+
+            VStack(spacing: 6) {
+                Text("Storage Analysis")
+                    .font(.system(size: 18, weight: .semibold))
+                Text("Analyze your disk to see what's using space.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
             }
+
+            if !hasFullDiskAccess {
+                GroupBox {
+                    HStack(spacing: 12) {
+                        Image(systemName: "lock.shield.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.orange)
+                            .frame(width: 28)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Full Disk Access")
+                                .font(.system(size: 13, weight: .medium))
+                            Text("Required to analyze storage")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Button("Open Settings") {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!)
+                        }
+                        .controlSize(.small)
+                    }
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 4)
+                }
+                .frame(maxWidth: 400)
+            }
+
+            if hasFullDiskAccess {
+                Button {
+                    Task { await viewModel.loadStorage() }
+                } label: {
+                    Text("Analyze")
+                        .frame(minWidth: 100)
+                }
+                .controlSize(.large)
+                .buttonStyle(.borderedProminent)
+            } else {
+                Text("Grant Full Disk Access in System Settings, then come back here.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 380)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Scanning View
+
+    private var scanningView: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                // Live progress header
+                GroupBox {
+                    HStack(spacing: 12) {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .frame(width: 20, height: 20)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(viewModel.storageActivity)
+                                .font(.system(size: 13, weight: .medium))
+                                .lineLimit(1)
+
+                            if !viewModel.storageCategories.isEmpty {
+                                let total = viewModel.storageCategories.reduce(Int64(0)) { $0 + $1.size }
+                                Text("\(ByteCountFormatter.string(fromByteCount: total, countStyle: .file)) analyzed")
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundStyle(.blue)
+                            }
+                        }
+                        Spacer()
+                    }
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 4)
+                }
+
+                // Categories appearing as they're analyzed
+                ForEach(viewModel.storageCategories) { category in
+                    GroupBox {
+                        HStack(spacing: 12) {
+                            Image(systemName: category.icon)
+                                .font(.system(size: 14))
+                                .foregroundStyle(colorFor(category.color))
+                                .frame(width: 24)
+
+                            Text(category.name)
+                                .font(.system(size: 13))
+
+                            Spacer()
+
+                            Text(category.formattedSize)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 2)
+                        .padding(.horizontal, 4)
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
         }
     }
 
@@ -277,13 +404,29 @@ struct StorageView: View {
 
             Divider()
 
-            if viewModel.drillDownEntries.isEmpty {
-                VStack(spacing: 12) {
+            if viewModel.drillDownEntries.isEmpty && viewModel.drillDownPath != nil {
+                VStack(spacing: 16) {
+                    Spacer()
+
                     ProgressView()
                         .scaleEffect(0.8)
-                    Text("Analyzing...")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
+
+                    VStack(spacing: 4) {
+                        Text("Analyzing directory...")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                        Text(path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+
+                    Text("Large directories may take a moment")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.quaternary)
+
+                    Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
