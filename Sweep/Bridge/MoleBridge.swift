@@ -34,8 +34,12 @@ actor MoleBridge {
     // MARK: - Binary Discovery
 
     private func findMoleBinary() -> String? {
-        if let bundled = Bundle.main.path(forResource: "mole", ofType: nil) {
-            return bundled
+        // Check for bundled mole inside app Resources
+        if let resourcePath = Bundle.main.resourcePath {
+            let bundledMole = resourcePath + "/mole/mole"
+            if FileManager.default.isExecutableFile(atPath: bundledMole) {
+                return bundledMole
+            }
         }
 
         let brewPath = "/opt/homebrew/bin/mole"

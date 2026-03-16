@@ -27,3 +27,6 @@ targets:
         PRODUCT_NAME: Sweep
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: YES
+    postBuildScripts:
+      - script: "${SRCROOT}/scripts/bundle-mole.sh"
+        name: "Bundle Mole"

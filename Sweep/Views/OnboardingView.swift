@@ -195,6 +195,14 @@ struct OnboardingView: View {
     // MARK: - Checks
 
     private func checkMole() {
+        // Check bundled mole first
+        if let resourcePath = Bundle.main.resourcePath {
+            let bundled = resourcePath + "/mole/mole"
+            if FileManager.default.isExecutableFile(atPath: bundled) {
+                hasMole = true
+                return
+            }
+        }
         let paths = ["/opt/homebrew/bin/mole", "/usr/local/bin/mole"]
         hasMole = paths.contains { FileManager.default.fileExists(atPath: $0) }
     }
