@@ -71,14 +71,6 @@ struct MenuBarView: View {
                     Task { await viewModel.scanForCleanables() }
                 }
 
-                MenuBarActionButton(icon: "trash", label: "Empty Trash", color: .red) {
-                    Task { await viewModel.emptyTrash() }
-                }
-
-                MenuBarActionButton(icon: "memorychip", label: "Free Memory", color: .green) {
-                    Task { await viewModel.freeMemory() }
-                }
-
                 MenuBarActionButton(icon: "network", label: "Flush DNS Cache", color: .blue) {
                     Task { await viewModel.flushDNS() }
                 }

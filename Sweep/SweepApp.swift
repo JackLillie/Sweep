@@ -25,16 +25,6 @@ struct SweepApp: App {
         .defaultSize(width: 900, height: 600)
         .commands {
             CommandMenu("Tools") {
-                Button("Empty Trash") {
-                    Task { await viewModel.emptyTrash() }
-                }
-                .keyboardShortcut("t", modifiers: [.command, .shift])
-
-                Button("Free Memory") {
-                    Task { await viewModel.freeMemory() }
-                }
-                .keyboardShortcut("m", modifiers: [.command, .shift])
-
                 Button("Flush DNS Cache") {
                     Task { await viewModel.flushDNS() }
                 }

@@ -187,25 +187,9 @@ actor MoleBridge {
 
     // MARK: - Quick Actions
 
-    func emptyTrash() async throws {
-        let trashPath = NSHomeDirectory() + "/.Trash"
-        let fm = FileManager.default
-        guard let contents = try? fm.contentsOfDirectory(atPath: trashPath) else { return }
-        for item in contents {
-            try fm.removeItem(atPath: trashPath + "/" + item)
-        }
-    }
-
     func flushDNS() async throws {
         let script = """
         do shell script "dscacheutil -flushcache && killall -HUP mDNSResponder" with administrator privileges
-        """
-        try runAppleScript(script)
-    }
-
-    func freeMemory() async throws {
-        let script = """
-        do shell script "sudo purge" with administrator privileges
         """
         try runAppleScript(script)
     }
